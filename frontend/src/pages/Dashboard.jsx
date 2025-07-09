@@ -7,10 +7,12 @@ import VerdictBadge from '../components/VerdictBadge';
 
 
 
+
 export default function Dashboard() {
-  const { user,logout } = useAuth();
+  const { user,logout,isLoggedIn } = useAuth();
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
+
 
   console.log('Dashboard user:', user);
   // Fetch submissions

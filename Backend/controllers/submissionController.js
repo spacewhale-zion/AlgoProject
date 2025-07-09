@@ -3,7 +3,7 @@
 import Submission from '../models/Submission.js';
 import Problem from '../models/Problem.js';
 import Testcase from '../models/Testcase.js';
-
+import User from '../models/User.js';
 import mongoose from 'mongoose';
 import fs from 'fs-extra';
 import path from 'path';
@@ -112,15 +112,22 @@ export const createSubmission = async (req, res) => {
   
           const output = stdout.trim();
           const expected = tc.expectedOutput.trim();
-  
+          console.log(`🔍 Testcase ${tc}:`);
+          console.log(`📥 Output: "${output}"`);
+          console.log(`✅ Expected: "${expected}"`);
           if (output !== expected) {
             console.log(`❌ Testcase failed: ${tc._id}`);
-            console.log(`📥 Output: "${output}"`);
-            console.log(`✅ Expected: "${expected}"`);
+
+            await Submission.findByIdAndUpdate(submission._id, {
+              failedTestcaseId: tc._id, // 👈 add this
+              actualOutput: output,     // 👈 and this (optional)
+              expectedOutput: expected
+            });
+           
             verdict = 'Wrong Answer';
             break;
           }
-  
+          
           executionTime = Math.max(executionTime, end - start);
         } catch (err) {
           console.error('💥 Runtime error:', err.stderr || err.message);
@@ -165,6 +172,97 @@ export const getSubmissionsByProblem = async (req, res) => {
     res.status(500).json({ msg: 'Server error' });
   }
 };
+
+export const getAllSubmissionsForProblem = async (req, res) => {
+  try {
+    const problemId = req.params.id;
+    if (!problemId) return res.status(400).json({ msg: 'Problem ID is required' });
+
+    const submissions = await Submission.find({ problemId })
+      .populate('userId', 'name email') // include user's name and email
+      .sort({ submittedAt: -1 });
+
+    res.json(submissions);
+  } catch (err) {
+    console.error('Get all submissions error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+};
+
+export const getGlobalLeaderboard = async (req, res) => {
+  try {
+    const now = new Date();
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Match only accepted submissions from this month
+    const submissions = await Submission.aggregate([
+      {
+        $match: {
+          verdict: 'Accepted',
+          submittedAt: { $gte: firstDayOfMonth }
+        }
+      },
+      {
+        $lookup: {
+          from: 'problems',
+          localField: 'problemId',
+          foreignField: '_id',
+          as: 'problem'
+        }
+      },
+      { $unwind: '$problem' },
+      {
+        $addFields: {
+          difficultyPoints: {
+            $switch: {
+              branches: [
+                { case: { $eq: ['$problem.difficulty', 'Easy'] }, then: 1 },
+                { case: { $eq: ['$problem.difficulty', 'Medium'] }, then: 3 },
+                { case: { $eq: ['$problem.difficulty', 'Normal'] }, then: 3 },
+                { case: { $eq: ['$problem.difficulty', 'Hard'] }, then: 10 }
+              ],
+              default: 0
+            }
+          }
+        }
+      },
+      {
+        $group: {
+          _id: '$userId',
+          totalPoints: { $sum: '$difficultyPoints' },
+          latestSubmission: { $max: '$submittedAt' }
+        }
+      },
+      {
+        $sort: {
+          totalPoints: -1,
+          latestSubmission: 1
+        }
+      },
+      { $limit: 100 }
+    ]);
+
+    // Fetch user data
+    const users = await User.find({ _id: { $in: submissions.map(u => u._id) } })
+      .select('name email');
+
+    const result = submissions.map(entry => {
+      const user = users.find(u => u._id.toString() === entry._id.toString());
+      return {
+        name: user?.name || 'Anonymous',
+        email: user?.email || '',
+        totalPoints: entry.totalPoints,
+        lastSolved: entry.latestSubmission
+      };
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error('Leaderboard error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+};
+
 
 // GET /api/submissions/:id
 export const getSubmissionById = async (req, res) => {
