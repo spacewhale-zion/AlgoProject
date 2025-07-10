@@ -8,26 +8,31 @@ export const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true); // 👈
 
   useEffect(() => {
-    if (token) {
+    const fetchUser = async () => {
+      if (!token) {
+        setLoading(false); // no token, nothing to fetch
+        return;
+      }
+  
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       try {
-        jwtDecode(token); // will throw if invalid
-        axios.get('/users/me')
-          .then((res) => {
-            console.log('✅ User data:', res.data);
-            setUser(res.data);
-          })
-          .catch(() => {
-            console.error('❌ Failed to fetch user');
-            logout();
-          });
+        jwtDecode(token); // validate
+        const res = await axios.get('/users/me');
+        setUser(res.data);
       } catch {
         logout();
+      } finally {
+        setLoading(false); // always stop loading
       }
-    }
+    };
+  
+    fetchUser();
   }, [token]);
+  
+  console.log(user)
 
   const login = (jwt) => {
     localStorage.setItem('token', jwt);
@@ -42,7 +47,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ token, user, login, logout, isLoggedIn: !!user }}>
+    <AuthContext.Provider value={{ token,loading, user, login, logout, isLoggedIn: !!user }}>
       {children}
     </AuthContext.Provider>
   );
