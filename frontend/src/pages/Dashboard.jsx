@@ -4,15 +4,27 @@ import { useEffect, useState } from 'react';
 import useAuth from '../hooks/useAuth';
 import axios from '../services/axios';
 import VerdictBadge from '../components/VerdictBadge';
+import ActivityHeatMap from '../components/ActivityHeatMap';
 
 
 
 
 export default function Dashboard() {
-  const { user,logout,isLoggedIn } = useAuth();
+  const { user,logout,isLoggedIn,loading:userLoading } = useAuth();
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activity, setActivity] = useState([]);
 
+  if (userLoading) return <div className="p-6 text-gray-500">Loading...</div>;
+  
+  useEffect(() => {
+    if (user) {
+      axios.get(`/submissions/activity`)          // <-- new endpoint
+           .then((res) => setActivity(res.data))
+           .catch(console.error);
+    }
+  }, [user]);
+  
 
   console.log('Dashboard user:', user);
   // Fetch submissions
@@ -33,8 +45,8 @@ export default function Dashboard() {
   const accepted = submissions.filter(s => s.verdict === 'Accepted').length;
   const total = submissions.length;
   const rejected = total - accepted;
-
   return (
+    
     <div className="p-6">
      <div className="flex items-center justify-between mb-6">
   <div>
@@ -57,6 +69,12 @@ export default function Dashboard() {
         <StatCard title="Rejected" value={rejected} color="bg-red-100" />
       </div>
 
+        {/* New Heat‑Map */}
+{activity.length > 0 && (
+  <div className="mb-8">
+    <ActivityHeatMap data={activity} />
+  </div>
+)}
       {/* Submission Table */}
       <h2 className="text-xl font-semibold mb-2">Recent Submissions</h2>
 
@@ -70,7 +88,7 @@ export default function Dashboard() {
           <thead className="bg-gray-100 text-left">
           <tr>
             <th className="px-4 py-2">Problem</th>
-            <th className="px-4 py-2">Difficulty</th> {/* 👈 New */}
+            <th className="px-4 py-2">Difficulty</th>
             <th className="px-4 py-2">Language</th>
             <th className="px-4 py-2">Verdict</th>
             <th className="px-4 py-2">Time</th>

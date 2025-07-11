@@ -14,6 +14,8 @@ import useAuth from './hooks/useAuth';
 import AdminProblems from './pages/Admin/AdminProblems';
 import AdminTestcases from './pages/Admin/AdminTestcase';
 import AdminTestcaseSelect from './pages/Admin/AdminTestcaseSelect';
+import Navbar from './components/Navbar';
+
 
 function App() {
 
@@ -21,6 +23,8 @@ function App() {
 
   return (
     <>
+      <Navbar />
+
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />

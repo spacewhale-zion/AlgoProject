@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
 import axios from '../services/axios';
-import Navbar from '../components/Navbar';
 
 
 export default function Home() {
@@ -27,7 +26,6 @@ export default function Home() {
 
       
       {/* Hero Section */}
-      <Navbar />
       
  
 

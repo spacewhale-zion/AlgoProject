@@ -303,3 +303,38 @@ export const updateVerdict = async (req, res) => {
     res.status(500).json({ msg: 'Server error' });
   }
 };
+
+
+export const getActivityHeatmap = async (req, res) => {
+  try {
+    const stats = await Submission.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(req.user.id)
+        }
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: '%Y-%m-%d', date: '$submittedAt' }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          date: '$_id',
+          count: 1
+        }
+      },
+      {
+        $sort: { date: 1 }
+      }
+    ]);
+    res.json(stats);
+  } catch (err) {
+    console.error('❌ Error in /submissions/activity route:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+};

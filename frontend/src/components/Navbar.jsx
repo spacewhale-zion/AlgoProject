@@ -60,6 +60,17 @@ export default function Navbar() {
                 >
                   Dashboard
                 </Link>
+
+                 {/* ✅ Admin-only link */}
+    {user?.role === 'admin' && (
+      <Link
+        to="/admin"
+        className="block px-4 py-2 text-gray-700 hover:bg-gray-100"
+        onClick={() => setDropdownOpen(false)}
+      >
+        Admin Panel
+      </Link>
+    )}
                 <button
                   onClick={() => {
                     logout();

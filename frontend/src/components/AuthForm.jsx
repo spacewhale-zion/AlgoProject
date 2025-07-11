@@ -22,7 +22,7 @@ export default function AuthForm({ mode }) {
       const res = await fn(formData);
       localStorage.setItem('token', res.token);  // still good
       login(res.token);                          // ✅ this updates AuthContext
-      navigate('/');                    // ✅ this pushes to dashboard
+      navigate('/dashboard');                    // ✅ this pushes to dashboard
     } catch (err) {
       setError(err.response?.data?.msg || 'Something went wrong');
     }
