@@ -20,7 +20,7 @@ const languageConfigs = {
     compile: (src, exe) => `g++ "${src}" -o "${exe}"`,
     execute: (exe, input) =>
       isWindows
-        ? `powershell -Command "& { Get-Content '${input}' | .\\${path.basename(exe)} }"`
+        ? `cmd /c "type \"${input}\" | \"${exe}\""`   // ✅ fixed
         : `timeout 2s ${exe} < ${input}`
   },
   python: {
@@ -62,6 +62,10 @@ export const createSubmission = async (req, res) => {
       });
   
       await submission.save();
+
+      let expectedOutput = null;
+      let actualOutput = null;
+      let actualInput = null;
   
       const config = languageConfigs[language.toLowerCase()];
       if (!config) return res.status(400).json({ msg: `Unsupported language: ${language}` });
@@ -83,6 +87,7 @@ export const createSubmission = async (req, res) => {
       }
   
       // Compile (if needed)
+      
       try {
         if (config.compile) {
           console.log('🛠 Compile command:', config.compile(srcPath, exePath));
@@ -112,11 +117,16 @@ export const createSubmission = async (req, res) => {
   
           const output = stdout.trim();
           const expected = tc.expectedOutput.trim();
-          console.log(`🔍 Testcase ${tc}:`);
-          console.log(`📥 Output: "${output}"`);
-          console.log(`✅ Expected: "${expected}"`);
+        
           if (output !== expected) {
             console.log(`❌ Testcase failed: ${tc._id}`);
+            console.log(`🔍 Testcase ${tc}:`);
+            console.log(`📥 Output: "${output}"`);
+            console.log(`✅ Expected: "${expected}"`);
+            expectedOutput = expected;
+            actualOutput = output;
+            actualInput = tc.input;
+
 
             await Submission.findByIdAndUpdate(submission._id, {
               failedTestcaseId: tc._id, // 👈 add this
@@ -146,11 +156,79 @@ export const createSubmission = async (req, res) => {
   
       await fs.remove(tempDir);
   
-      res.json({ msg: 'Submission evaluated', verdict });
+      res.json({
+        msg: 'Submission evaluated',
+        verdict,
+        expectedOutput: verdict === 'Accepted' ? undefined : expectedOutput,
+        actualOutput: verdict === 'Accepted' ? undefined : actualOutput,
+        actualInput: verdict === 'Accepted' ? undefined : actualInput
+      });
+      
+      
   
     } catch (err) {
       console.error('Evaluation error:', err);
       res.status(500).json({ msg: 'Server error' });
+    }
+  };
+
+
+  export const runCode = async (req, res) => {
+    const { code = '', language = 'cpp', input = '' } = req.body;
+  
+    try {
+      const config = languageConfigs[language.toLowerCase()];
+      if (!config) return res.status(400).json({ error: `Unsupported language: ${language}` });
+  
+      /* 1. prepare temporary workspace */
+      const jobId = uuid();
+      const tempDir = path.join('temp', `run-${jobId}`);
+      await fs.ensureDir(tempDir);
+  
+      const srcFile = path.join(tempDir, `Main.${config.extension}`);
+      await fs.writeFile(srcFile, code);
+  
+      /* 2. optional compile */
+      let exeFile = srcFile;
+      if (language === 'cpp') {
+        exeFile = path.join(tempDir, isWindows ? 'Main.exe' : 'Main.out');
+      }
+  
+      if (config.compile) {
+        try {
+          await execAsync(config.compile(srcFile, exeFile));
+        } catch (err) {
+          await fs.remove(tempDir);
+          return res.json({ error: err.stderr || 'Compilation Error' });
+        }
+      }
+  
+      /* 3. write input file */
+      const inputPath = path.join(tempDir, 'input.txt');
+      await fs.writeFile(inputPath, input);
+  
+      /* 4. execute */
+      let stdout = '', stderr = '';
+      try {
+        const { stdout: out, stderr: err } = await execAsync(
+          config.execute(exeFile, inputPath),
+          { timeout: 4000 } // 4‑second hard limit
+        );
+        stdout = out;
+        stderr = err;
+      } catch (err) {
+        stderr = err.stderr || err.message;
+      }
+  
+      await fs.remove(tempDir);
+  
+      /* 5. respond */
+      if (stderr) return res.json({ error: stderr.trim() || 'Runtime Error' });
+      return res.json({ output: stdout.trim() || '(no output)' });
+  
+    } catch (e) {
+      console.error('Run endpoint error:', e);
+      res.status(500).json({ error: 'Server error' });
     }
   };
   

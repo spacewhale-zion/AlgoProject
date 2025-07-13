@@ -5,7 +5,8 @@ import {
   getSubmissionById,
   getAllSubmissionsForProblem,
   getGlobalLeaderboard,
-  getActivityHeatmap
+  getActivityHeatmap,
+  runCode
 } from '../controllers/submissionController.js';
 
 import authMiddleware from '../middlewares/authMiddleware.js';
@@ -13,6 +14,7 @@ import authMiddleware from '../middlewares/authMiddleware.js';
 const router = express.Router();
 
 router.post('/', authMiddleware, createSubmission);
+router.post('/run', authMiddleware, runCode);
 router.get('/activity', authMiddleware, getActivityHeatmap);
 router.get('/:problemId', authMiddleware, getSubmissionsByProblem);
 router.get('/:id', authMiddleware, getSubmissionById);

@@ -11,7 +11,7 @@ export default function AdminTestcases() {
 
   const fetchTestcases = async () => {
     try {
-      const res = await axios.get(`/admin/testcases/${problemId}`);
+      const res = await axios.get(`/testcases/${problemId}`);
       setTestcases(res.data || []);
     } catch (err) {
       console.error('Failed to fetch testcases:', err);
@@ -20,26 +20,29 @@ export default function AdminTestcases() {
 
   useEffect(() => {
     fetchTestcases();
-    axios.get(`/problems/${problemId}`).then(res => {
-      setProblemTitle(res.data?.title || '');
-    });
   }, [problemId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+  
+    // Normalise white‑space in input / output
+    const payload = {
+      ...form,
+      input: form.input.trim(),
+      expectedOutput: form.expectedOutput.trim(),
+      problemId        // 👉 include the problem ID for all POST/PUT calls
+    };
+  
     try {
-      const payload = {
-        ...form,
-        input: form.input.trim(),
-        expectedOutput: form.expectedOutput.trim()
-      };
-
       if (editing) {
-        await axios.put(`/admin/testcases/${editing}`, payload);
+        // update existing testcase
+        await axios.put(`/testcases/${editing}`, payload);
       } else {
-        await axios.post(`/admin/testcases/${problemId}`, payload);
+        // create new testcase
+        await axios.post('/testcases', payload);
       }
-
+  
+      // reset UI
       setForm({ input: '', expectedOutput: '', isSample: true });
       setEditing(null);
       fetchTestcases();
@@ -47,6 +50,7 @@ export default function AdminTestcases() {
       console.error('Error saving testcase:', err);
     }
   };
+  
 
   const handleEdit = (tc) => {
     setForm({
@@ -59,8 +63,8 @@ export default function AdminTestcases() {
 
   const handleDelete = async (id) => {
     if (window.confirm('Delete this testcase?')) {
-      await axios.delete(`/admin/testcases/${id}`);
-      fetchTestcases();
+      await axios.delete(`/testcases/${id}`);
+      fetchTestcases(); 
     }
   };
 
@@ -96,13 +100,14 @@ export default function AdminTestcases() {
           />
           This is a <strong>sample</strong> testcase
         </label>
-
-        <button
-          type="submit"
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-        >
-          {editing ? 'Update' : 'Add'} Testcase
-        </button>
+        <div className="flex justify-end">
+    <button
+      type="submit"
+      className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+    >
+      {editing ? 'Update' : 'Add'} Testcase
+    </button>
+  </div>
       </form>
 
       {/* Testcases Table */}

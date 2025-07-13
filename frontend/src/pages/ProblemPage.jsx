@@ -13,6 +13,10 @@ export default function ProblemPage() {
   const [code, setCode] = useState('');
   const [input, setInput] = useState('');
   const [output, setOutput] = useState(null);
+  const [expectedOutput, setExpectedOutput] = useState('');
+const [actualOutput, setActualOutput] = useState('');
+const [tc, setTc] = useState('');
+
   const [verdict, setVerdict] = useState(null);
   const [submissions, setSubmissions] = useState([]);
 
@@ -21,24 +25,24 @@ export default function ProblemPage() {
     const savedCode = localStorage.getItem(`code-${id}-${language}`);
     if (savedCode) setCode(savedCode);
   }, [id, language]);
+  
   useEffect(() => {
     if (!user) return; // Wait until user is available
   
     axios.get(`/problems/${id}`).then(res => setProblem(res.data));
-    axios.get(`/submissions?problemId=${id}`).then(res => setSubmissions(res.data));
+    axios.get(`/submissions/${id}`).then(res => setSubmissions(res.data));
   }, [id, user]);
-  
 
   // Save code to localStorage on change
   useEffect(() => {
     if (code) localStorage.setItem(`code-${id}-${language}`, code);
   }, [code, id, language]);
-  console.log('ProblemPage user:', user);
+  // console.log('ProblemPage user:', user);
 
 
   const handleRun = async () => {
     try {
-      const res = await axios.post('/run', {
+      const res = await axios.post('/submissions/run', {
         code,
         language,
         input
@@ -57,14 +61,25 @@ export default function ProblemPage() {
         language,
         code
       });
+  
       setVerdict(res.data.verdict);
       setOutput(null);
+      // console.log('Submission response:', res.data);
+      if (res.data.expectedOutput || res.data.actualOutput) {
+        setTc(res.data.actualInput);
+        setExpectedOutput(res.data.expectedOutput);
+        setActualOutput(res.data.actualOutput);
+        setOutput(`❌ Wrong Answer\nExpected: ${res.data.expectedOutput}\nYour Output: ${res.data.actualOutput}`);
+      }
+      
+  
       axios.get(`/submissions?problemId=${id}`).then(res => setSubmissions(res.data));
     } catch (err) {
       setVerdict('Submission failed');
       console.error(err);
     }
   };
+  
 
   if (!problem) return <div className="p-6">Loading...</div>;
 
@@ -127,13 +142,22 @@ export default function ProblemPage() {
         </button>
       </div>
 
-      {/* Output section */}
-      {output && (
-        <div className="mt-6">
-          <h3 className="text-sm font-medium text-gray-700 mb-1">Output:</h3>
-          <pre className="bg-gray-100 p-3 rounded text-sm whitespace-pre-wrap">{output}</pre>
-        </div>
-      )}
+      <div className="bg-gray-100 p-3 rounded text-sm whitespace-pre-wrap">
+
+        {/* Output */}
+        {verdict === 'Wrong Answer' && (
+  <div className="mt-3">
+    <p><strong>Input:</strong></p>
+    <pre className="bg-green-100 p-2 rounded">{tc}</pre>
+    <p><strong>Expected Output:</strong></p>
+    <pre className="bg-green-100 p-2 rounded">{expectedOutput}</pre>
+    <p className="mt-2"><strong>Your Output:</strong></p>
+    <pre className="bg-red-100 p-2 rounded">{actualOutput}</pre>
+  </div>
+)}
+
+</div>
+
 
       {/* Verdict */}
       {verdict && (
