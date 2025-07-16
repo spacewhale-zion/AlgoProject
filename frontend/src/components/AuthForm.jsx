@@ -1,13 +1,13 @@
 // src/components/AuthForm.jsx
-import React from 'react';
-import useAuth from '../hooks/useAuth'; // ✅ add this at top
-import { useState } from 'react';
+import React, { useState } from 'react';
+import useAuth from '../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { loginUser, registerUser } from '../services/auth';
 
 export default function AuthForm({ mode }) {
-    const { login } = useAuth();
-  const [formData, setFormData] = useState({ name: '', email: '', password: '' });
+  const { login } = useAuth();
+  const [formData, setFormData] = useState({ name: '', email: '', password: '', role: 'user' });
+  const [adminKey, setAdminKey] = useState('');
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
@@ -16,13 +16,18 @@ export default function AuthForm({ mode }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-  
+
     try {
       const fn = isLogin ? loginUser : registerUser;
-      const res = await fn(formData);
-      localStorage.setItem('token', res.token);  // still good
-      login(res.token);                          // ✅ this updates AuthContext
-      navigate('/');                   
+      const payload = { ...formData };
+      if (formData.role === 'admin') {
+        payload.adminKey = adminKey;
+      }
+
+      const res = await fn(payload);
+      localStorage.setItem('token', res.token);
+      login(res.token);
+      navigate('/');
     } catch (err) {
       setError(err.response?.data?.msg || 'Something went wrong');
     }
@@ -38,16 +43,43 @@ export default function AuthForm({ mode }) {
       </h2>
 
       {!isLogin && (
-        <div className="mb-4">
-          <label className="block mb-1 text-sm font-medium">Name</label>
-          <input
-            type="text"
-            className="w-full border rounded px-3 py-2"
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            required
-          />
-        </div>
+        <>
+          <div className="mb-4">
+            <label className="block mb-1 text-sm font-medium">Name</label>
+            <input
+              type="text"
+              className="w-full border rounded px-3 py-2"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              required
+            />
+          </div>
+
+          <div className="mb-4">
+            <label className="block mb-1 text-sm font-medium">Role</label>
+            <select
+              value={formData.role}
+              onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+              className="w-full border rounded px-3 py-2"
+            >
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+
+          {formData.role === 'admin' && (
+            <div className="mb-4">
+              <label className="block mb-1 text-sm font-medium">Admin Access Password</label>
+              <input
+                type="password"
+                className="w-full border rounded px-3 py-2"
+                value={adminKey}
+                onChange={(e) => setAdminKey(e.target.value)}
+                required
+              />
+            </div>
+          )}
+        </>
       )}
 
       <div className="mb-4">

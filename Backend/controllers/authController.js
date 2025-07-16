@@ -2,45 +2,49 @@ import User from '../models/User.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
+import dotenv from 'dotenv';
+dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
-// POST /api/auth/register
+const ADMIN_SECRET = process.env.ADMIN_SECRET;
+
 export const register = async (req, res) => {
-  const { name, email, password } = req.body;
+  const { name, email, password, role, adminKey } = req.body;
 
   try {
-    // Check if user already exists
-    const existing = await User.findOne({ email });
-    if (existing) {
-      return res.status(400).json({ msg: 'Email already registered' });
+
+    if (role === 'admin') {
+      if (!adminKey || adminKey !== ADMIN_SECRET) {
+        return res.status(401).json({ msg: 'Invalid admin access password' });
+      }
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Check if user exists
+    const existing = await User.findOne({ email });
+    if (existing) return res.status(400).json({ msg: 'Email already registered' });
 
-    // Create new user with new ObjectId
-    const newUser = new User({
+    // Hash password
+    const hashed = await bcrypt.hash(password, 10);
+
+    const user = await User.create({
       name,
       email,
-      password: hashedPassword,
-      role: 'user',
-      stats: {
-        solvedCount: 0,
-        submissionsCount: 0
-      },
-      createdAt: new Date(),
-      updatedAt: new Date()
+      password: hashed,
+      role: role || 'user',
     });
 
-    await newUser.save();
-    res.status(201).json({ msg: 'User registered successfully' });
+    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, {
+      expiresIn: '7d',
+    });
 
+    res.json({ token });
   } catch (err) {
-    console.error('Register error:', err);
+    console.error('Registration Error:', err.message);
     res.status(500).json({ msg: 'Server error' });
   }
 };
+
 
 // POST /api/auth/login
 export const login = async (req, res) => {
