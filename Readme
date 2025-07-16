@@ -1,8 +1,4 @@
-Here’s a complete `README.md` tailored for your project **Algo**, explaining both frontend and backend, and how to run it with **Docker**:
 
----
-
-```markdown
 # 🧠 AlgoJudge – Online Coding Platform
 
 AlgoJudge is a full-stack online judge platform built with the MERN stack, supporting:
