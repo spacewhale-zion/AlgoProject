@@ -4,8 +4,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
 import axios from '../services/axios';
 
-
+const base=import.meta.env.VITE_API_URL
 export default function Home() {
+
   const { isLoggedIn } = useAuth();
   const navigate = useNavigate();
 
