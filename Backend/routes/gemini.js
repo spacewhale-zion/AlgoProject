@@ -4,7 +4,8 @@ import axios from 'axios';
 import generateAiResponse from '../controllers/generateAiResponse.js';
 const router = express.Router();
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+
 
 router.post('/review', async (req, res) => {
   const { code } = req.body;
