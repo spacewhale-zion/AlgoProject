@@ -21,13 +21,14 @@ import userRoutes from './routes/user.js';
 import problemRoutes from './routes/problems.js';
 import submissionRoutes from './routes/submissions.js';
 import testcaseRoutes from './routes/testcases.js';
-
+import geminiRoutes from './routes/gemini.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/problems', problemRoutes);
 app.use('/api/submissions', submissionRoutes);
 app.use('/api/testcases', testcaseRoutes);
+app.use('/api/gemini', geminiRoutes);
 
 
 const PORT = process.env.PORT || 5000;

@@ -1,0 +1,145 @@
+Here’s a complete `README.md` tailored for your project **Algo**, explaining both frontend and backend, and how to run it with **Docker**:
+
+---
+
+```markdown
+# 🧠 AlgoJudge – Online Coding Platform
+
+AlgoJudge is a full-stack online judge platform built with the MERN stack, supporting:
+
+- 👨‍💻 Problem solving and code submissions
+- 📊 Leaderboard and submission history
+- 🧪 Custom test case execution
+- 🛠️ Admin dashboard (problem/testcase management)
+- 🤖 AI-Powered Code Review (via Gemini)
+
+---
+
+## 🏗️ Tech Stack
+
+| Layer        | Tech Used              |
+|--------------|------------------------|
+| Frontend     | React + Tailwind + Vite|
+| Backend      | Express + MongoDB      |
+| AI Review    | Google Gemini API      |
+| DevOps       | Docker + Docker Compose|
+
+---
+
+## 📁 Project Structure
+
+```
+
+Algo/
+├── Backend/            # Node.js Express API
+├── frontend/           # React frontend (Vite)
+├── docker-compose.yml
+├── README.md
+└── .env files
+
+````
+
+---
+
+## 🐳 Docker Setup
+
+> Make sure you have **Docker** installed on your system.  
+> [Download Docker](https://docs.docker.com/get-docker/)
+
+### 1. Clone the repo
+
+```bash
+git clone https://github.com/your-username/Algo.git
+cd Algo
+````
+
+### 2. Set up environment variables
+
+* Create a `.env` file inside the `Backend` folder:
+
+```env
+PORT=5000
+MONGO_URI=mongodb://mongo:27017/algo
+JWT_SECRET=your_jwt_secret
+GEMINI_API_KEY=your_google_gemini_api_key
+```
+
+* (Optional) Add `.env` in `frontend/` if you use Vite env vars.
+
+### 3. Build and Run with Docker
+
+```bash
+docker compose up --build
+```
+
+### 4. Open in browser
+
+* Frontend: [http://localhost:3000](http://localhost:3000)
+* Backend API: [http://localhost:5000/api](http://localhost:5000/api)
+
+---
+
+## 📦 Docker Commands
+
+| Command                        | Description                    |
+| ------------------------------ | ------------------------------ |
+| `docker compose up --build`    | Build and run containers       |
+| `docker compose down`          | Stop containers                |
+| `docker compose logs -f`       | View container logs            |
+| `docker exec -it backend bash` | Access backend container shell |
+
+---
+
+## ✨ Features
+
+* Authentication & Role-based access
+* Problem listing with tag filtering
+* Live code editor with language support (C++, Python, Java)
+* Run code with custom input
+* Submit against hidden test cases
+* Past submission tracking
+* Admin pages to manage problems/test cases
+* AI-powered feedback using Gemini API
+
+---
+
+## 🧠 AI Code Review
+
+Powered by [Gemini 2.0 Flash](https://ai.google.dev/). Click **"Review Code"** on the problem page to get instant AI feedback!
+
+---
+
+## 🚀 Deployment (optional)
+
+You can deploy this app using services like:
+
+* Frontend: **Vercel**, **Netlify**, or **Cloudflare Pages**
+* Backend: **Render**, **Railway**, or a **VPS** with Docker
+
+---
+
+## 👨‍🔧 Maintainers
+
+* Aryan Raj ([@github](https://github.com/your-username))
+
+---
+
+## 📜 License
+
+MIT License – use freely, improve widely!
+
+````
+
+---
+
+### ✅ Next Step
+
+- Replace `"your-username"` and `"your_jwt_secret"` with your actual values.
+- Commit this file:
+
+```bash
+git add README.md
+git commit -m "Add Docker-based README"
+git push origin main
+````
+
