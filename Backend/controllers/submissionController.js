@@ -341,7 +341,7 @@ export const getGlobalLeaderboard = async (req, res) => {
   }
 };
 
-
+//  Submissions done by user
 // GET /api/submissions/:id
 export const getSubmissionById = async (req, res) => {
   try {

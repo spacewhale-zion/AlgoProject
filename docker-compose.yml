@@ -9,7 +9,9 @@ services:
     environment:
       - PORT=5000
       - MONGO_URI=mongodb://mongo:27017/algo
-      - GEMINI_API_KEY=your_gemini_key_here
+      - GEMINI_API_KEY="your-gemini-api-key"
+      - JWT_SECRET=Aryan123
+      - ADMIN_SECRET=admin1234
     depends_on:
       - mongo
 

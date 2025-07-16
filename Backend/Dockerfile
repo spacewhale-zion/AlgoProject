@@ -1,6 +1,6 @@
 FROM node:18-alpine
 
-WORKDIR /app
+WORKDIR /App
 
 RUN apk add --no-cache g++ make python3
 

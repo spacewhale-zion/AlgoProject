@@ -31,7 +31,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (user) {
       axios
-        .get(`/submissions?${user._id}`) // Your backend route: /api/submissions
+        .get(`/submissions/${user._id}`) // Your backend route: /api/submissions
         .then(res => {
           setSubmissions(res.data || []);
         })

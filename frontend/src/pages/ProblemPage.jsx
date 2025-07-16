@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useParams } from 'react-router-dom';
 import axios from '../services/axios';
 import useAuth from '../hooks/useAuth';
@@ -40,6 +41,8 @@ export default function ProblemPage() {
   const handleRun = async () => {
     try {
       const res = await axios.post('/submissions/run', { code, language, input });
+      console.log("I am running")
+      console.log(res.data);
       setOutput(res.data.output || res.data.error);
     } catch (err) {
       setOutput('Runtime error or server issue');
@@ -133,7 +136,12 @@ export default function ProblemPage() {
           Submit Code
         </button>
       </div>
-
+      {output && (
+  <div className="bg-gray-100 mt-4 p-4 rounded whitespace-pre-wrap text-sm">
+    <strong>Output:</strong>
+    <pre className="mt-2 text-gray-800">{output}</pre>
+  </div>
+)}
       <div className="bg-gray-100 p-3 rounded text-sm whitespace-pre-wrap mt-4">
         {verdict === 'Wrong Answer' && (
           <div className="mt-3">
@@ -194,12 +202,12 @@ export default function ProblemPage() {
         </table>
 
         <div className="mt-4">
-          <button
-            onClick={() => window.open(`/submissions/${id}`, '_blank')}
-            className="text-sm text-blue-600 underline hover:text-blue-800"
+          <Link
+            to={`/submissions/${id}`}
+            className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
           >
-            View Your All Submissions for this Problem →
-          </button>
+            View All Submissions →
+          </Link>
         </div>
      
       </div>
