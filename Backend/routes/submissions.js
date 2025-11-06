@@ -17,7 +17,7 @@ router.post('/', authMiddleware, createSubmission);
 router.post('/run', authMiddleware, runCode);
 router.get('/activity', authMiddleware, getActivityHeatmap);
 router.get('/:problemId', authMiddleware, getSubmissionsByProblem);
-router.get('/:id', authMiddleware, getSubmissionById);
+router.get('/single/:id', authMiddleware, getSubmissionById);
 router.get('/all/:id', authMiddleware, getAllSubmissionsForProblem);
 router.get('/leaderboard/global', getGlobalLeaderboard); 
 

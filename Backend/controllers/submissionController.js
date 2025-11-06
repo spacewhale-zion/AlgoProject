@@ -1,5 +1,3 @@
-
-
 import Submission from '../models/Submission.js';
 import Problem from '../models/Problem.js';
 import Testcase from '../models/Testcase.js';
@@ -20,7 +18,7 @@ const languageConfigs = {
     compile: (src, exe) => `g++ "${src}" -o "${exe}"`,
     execute: (exe, input) =>
       isWindows
-        ? `cmd /c "type \"${input}\" | \"${exe}\""`   // ✅ fixed
+        ? `cmd /c "type \"${input}\" | \"${exe}\""`
         : `timeout 2s ${exe} < ${input}`
   },
   python: {
@@ -54,7 +52,7 @@ export const createSubmission = async (req, res) => {
       const submission = new Submission({
         _id: new mongoose.Types.ObjectId(),
         user: req.user.id,
-        problem:problemId,
+        problem: problemId,
         code,
         language,
         verdict: 'Pending',
@@ -63,112 +61,42 @@ export const createSubmission = async (req, res) => {
   
       await submission.save();
 
-      let expectedOutput = null;
-      let actualOutput = null;
-      let actualInput = null;
-  
-      const config = languageConfigs[language.toLowerCase()];
-      if (!config) return res.status(400).json({ msg: `Unsupported language: ${language}` });
-  
-      const testcases = await Testcase.find({ problemId });
-      const jobId = uuid();
-      const tempDir = path.join('temp', `submission-${jobId}`);
-      await fs.ensureDir(tempDir);
-  
-      const fileName = `Main.${config.extension}`;
-      const srcPath = path.join(tempDir, fileName);
-      await fs.writeFile(srcPath, code);
-      console.log('✅ Source file:', srcPath);
-  
-      // Only create exePath for C++
-      let exePath = null;
-      if (language === 'cpp') {
-        exePath = path.join(tempDir, isWindows ? 'Main.exe' : 'Main.out');
-      }
-  
-      // Compile (if needed)
-      
-      try {
-        if (config.compile) {
-          console.log('🛠 Compile command:', config.compile(srcPath, exePath));
-          await execAsync(config.compile(srcPath, exePath));
-        }
-      } catch (err) {
-        await Submission.findByIdAndUpdate(submission._id, { verdict: 'Compilation Error' });
-        await fs.remove(tempDir);
-        return res.json({ msg: 'Compilation Error', verdict: 'Compilation Error' });
-      }
-  
-      // Evaluate testcases
-      let verdict = 'Accepted';
-      let executionTime = 0;
-  
-      for (const tc of testcases) {
-        const inputPath = path.join(tempDir, 'input.txt');
-        await fs.writeFile(inputPath, tc.input);
-  
-        const command = config.execute(exePath || srcPath, inputPath);
-        console.log('🚀 Running:', command);
-  
-        try {
-          const start = Date.now();
-          const { stdout } = await execAsync(command);
-          const end = Date.now();
-  
-          const output = stdout.trim();
-          const expected = tc.expectedOutput.trim();
-        
-          if (output !== expected) {
-            console.log(`❌ Testcase failed: ${tc._id}`);
-            console.log(`🔍 Testcase ${tc}:`);
-            console.log(`📥 Output: "${output}"`);
-            console.log(`✅ Expected: "${expected}"`);
-            expectedOutput = expected;
-            actualOutput = output;
-            actualInput = tc.input;
+      // 🛑 THE FIX: Instead of inline judging, we call the judge function and await the result.
+      await judgeSubmission(submission._id);
 
-
-            await Submission.findByIdAndUpdate(submission._id, {
-              failedTestcaseId: tc._id, // 👈 add this
-              actualOutput: output,     // 👈 and this (optional)
-              expectedOutput: expected
-            });
-           
-            verdict = 'Wrong Answer';
-            break;
-          }
-          
-          executionTime = Math.max(executionTime, end - start);
-        } catch (err) {
-          console.error('💥 Runtime error:', err.stderr || err.message);
-          verdict = err.killed || err.signal === 'SIGTERM' || err.stderr?.includes('timed out')
-            ? 'TLE'
-            : 'Runtime Error';
-          break;
-        }
+      // Fetch the updated submission to return the final result to the client
+      const updatedSubmission = await Submission.findById(submission._id)
+        .select('verdict executionTime memoryUsed testResults errorDetails')
+        .populate('problem', 'title difficulty');
+  
+      if (!updatedSubmission) {
+         // Should ideally never happen, but good for defensive programming
+         return res.status(500).json({ msg: 'Internal error: Submission disappeared after judging' });
       }
-  
-      await Submission.findByIdAndUpdate(submission._id, {
-        verdict,
-        executionTime: Math.round(executionTime),
-        memoryUsed: 0
-      });
-  
-      await fs.remove(tempDir);
-  
-      res.json({
+
+      const responseData = {
         msg: 'Submission evaluated',
-        verdict,
-        expectedOutput: verdict === 'Accepted' ? undefined : expectedOutput,
-        actualOutput: verdict === 'Accepted' ? undefined : actualOutput,
-        actualInput: verdict === 'Accepted' ? undefined : actualInput
-      });
+        verdict: updatedSubmission.verdict,
+        executionTime: updatedSubmission.executionTime,
+        memoryUsed: updatedSubmission.memoryUsed,
+        // The frontend can parse this array to show detailed results
+        testResults: updatedSubmission.testResults,
+        errorDetails: updatedSubmission.errorDetails || undefined
+      };
+
+      // Send appropriate status codes for various verdicts
+      if (updatedSubmission.verdict === 'Accepted') {
+         res.json(responseData);
+      } else if (updatedSubmission.verdict === 'Compilation Error') {
+         res.status(400).json(responseData);
+      } else {
+         res.status(200).json(responseData); // All other failures (WA, TLE, RE) return 200/OK
+      }
       
-      
-  
     } catch (err) {
       console.error('Evaluation error:', err);
-      res.status(500).json({ msg: 'Server error' });
+      // In a real system, you would log this and update the submission status to 'Internal Error'
+      res.status(500).json({ msg: 'Server error', error: err.message });
     }
   };
 
@@ -261,84 +189,152 @@ export const createSubmission = async (req, res) => {
 
 
 export const judgeSubmission = async (submissionId) => {
+  const TEMP_DIR = path.join(process.cwd(), "temp", `submission-${submissionId}`);
+  
   try {
     const submission = await Submission.findById(submissionId)
       .populate("problem");
     if (!submission) return;
 
     const problem = submission.problem;
-    const TIME_LIMIT = problem.timeLimit || 2000; // ms
-    const testcases = await Testcase.find({ problem: problem._id });
+    // Problem.js defines timeLimit in seconds. Convert to milliseconds for execAsync timeout.
+    const TIME_LIMIT = (problem.timeLimit || 2) * 1000; 
+    const testcases = await Testcase.find({ problemId: problem._id }); // Use problemId for consistency
 
-    const TEMP_DIR = path.join(process.cwd(), "temp", `submission-${submissionId}`);
     await fs.ensureDir(TEMP_DIR);
+
+    const config = languageConfigs[submission.language];
+    if (!config) throw new Error(`Unsupported language: ${submission.language}`);
 
     // Build paths
     const EXEC = path.join(TEMP_DIR, isWindows ? "Main.exe" : "Main.out");
-    const SRC = path.join(TEMP_DIR, `Main.${languageConfigs[submission.language].extension}`);
+    const SRC = path.join(TEMP_DIR, `Main.${config.extension}`);
 
-    // If code was not compiled (e.g., compile error previously)
-    if (!fs.existsSync(EXEC) && submission.language === "cpp") {
-      await Submission.findByIdAndUpdate(submissionId, { verdict: "Compilation Error" });
-      return;
+    // Write source file (if not already done by a previous step)
+    await fs.writeFile(SRC, submission.code); 
+
+    // Compile (if needed)
+    if (config.compile) {
+      try {
+        await execAsync(config.compile(SRC, EXEC));
+      } catch (err) {
+        await Submission.findByIdAndUpdate(submissionId, { verdict: "Compilation Error", errorDetails: err.stderr || err.message });
+        await fs.remove(TEMP_DIR);
+        return;
+      }
     }
-
+    // For compiled languages, ensure the executable exists
+    const executablePath = submission.language === "cpp" ? EXEC : SRC;
+    if (submission.language === "cpp" && !fs.existsSync(executablePath)) {
+        // This case should be caught by the compile catch block, but kept for robustness
+        await Submission.findByIdAndUpdate(submissionId, { verdict: "Compilation Error" });
+        await fs.remove(TEMP_DIR);
+        return;
+    }
+    
     const testResults = [];
     let overallVerdict = "Accepted";
+    let maxExecutionTime = 0;
+    let finalErrorDetails = '';
 
     for (const tc of testcases) {
-      const start = Date.now();
-      let output = "";
-      let errorOutput = "";
-      let timedOut = false;
+      const inputPath = path.join(TEMP_DIR, `input-${tc._id}.txt`);
+      await fs.writeFile(inputPath, tc.input);
+
+      // Construct command using the correct executable/source file path
+      const command = config.execute(executablePath, inputPath);
+
+      let testcaseVerdict = 'Accepted';
+      let executionTime = 0;
+      let userOutput = '';
+      
+      const start = Date.now(); // Start time outside the try block for better time calculation
 
       try {
-        const command = languageConfigs[submission.language].execute(EXEC || SRC, null);
-        const { stdout } = await execAsync(command, {
-          input: tc.input,
-          timeout: TIME_LIMIT
+        const { stdout, stderr } = await execAsync(command, {
+          timeout: TIME_LIMIT,
+          killSignal: 'SIGTERM'
         });
-        output = stdout.trim();
-      } catch (err) {
-        if (err.killed || err.signal === "SIGTERM") {
-          overallVerdict = "TLE";
-          testResults.push({ testcase: tc._id, verdict: "TLE" });
-          break;
+        executionTime = Date.now() - start;
+        userOutput = stdout.trim();
+        finalErrorDetails = stderr.trim(); // Capture stderr even on success for info
+
+        const expected = tc.expectedOutput.trim();
+        
+        if (userOutput !== expected) {
+          testcaseVerdict = 'Wrong Answer';
+          overallVerdict = 'Wrong Answer';
+        } else {
+          maxExecutionTime = Math.max(maxExecutionTime, executionTime);
         }
-        errorOutput = err.stderr?.trim() || err.message;
-        overallVerdict = "Runtime Error";
-        testResults.push({ testcase: tc._id, verdict: "Runtime Error", userOutput: errorOutput });
-        break;
+      } catch (err) {
+        executionTime = Date.now() - start; // Record time even on failure
+
+        if (err.killed || err.signal === 'SIGTERM' || err.message?.includes('timed out')) {
+          testcaseVerdict = 'Time Limit Exceeded';
+          overallVerdict = 'Time Limit Exceeded';
+          userOutput = 'Execution exceeded time limit.';
+        } else {
+          // General runtime error
+          testcaseVerdict = 'Runtime Error';
+          overallVerdict = 'Runtime Error';
+          const errorOutput = err.stderr?.trim() || err.message;
+          finalErrorDetails = errorOutput;
+          userOutput = errorOutput; 
+        }
       }
 
-      const expected = tc.expectedOutput.trim();
-      if (output !== expected) {
-        overallVerdict = "Wrong Answer";
-        testResults.push({ testcase: tc._id, verdict: "Wrong Answer", userOutput: output, expectedOutput: expected });
-        break;
-      }
+      // Populate TestResult for the current testcase
+      const result = {
+        testcase: tc._id,
+        verdict: testcaseVerdict === 'Time Limit Exceeded' ? 'Time Limit Exceeded' : testcaseVerdict,
+        time: Math.round(executionTime),
+        memory: 0, 
+        userOutput: testcaseVerdict !== 'Accepted' ? userOutput : '', // Only store output/error if not accepted
+        isSample:tc.isSample
+      };
+      
+      testResults.push(result);
 
-      testResults.push({ testcase: tc._id, verdict: "Accepted" });
+      // Stop the loop on first failure
+      if (overallVerdict !== 'Accepted') {
+          break;
+      }
     }
 
+    // Determine the final execution time for the submission
+    const finalExecutionTime = overallVerdict === 'Accepted' 
+                             ? Math.round(maxExecutionTime)
+                             : testResults.length > 0 ? Math.round(testResults[testResults.length - 1].time) : 0;
+
+    // Use $set to explicitly overwrite the entire testResults array (the fix from last step)
     await Submission.findByIdAndUpdate(submissionId, {
-      verdict: overallVerdict,
-      testResults
+      $set: {
+        verdict: overallVerdict,
+        testResults,
+        executionTime: finalExecutionTime,
+        memoryUsed: 0,
+        errorDetails: overallVerdict === 'Runtime Error' ? finalErrorDetails : ''
+      }
     });
 
     await fs.remove(TEMP_DIR);
 
   } catch (err) {
-    console.error("Judge Error:", err);
+    console.error("Judge Internal Error:", err);
     await Submission.findByIdAndUpdate(submissionId, {
       verdict: "Internal Error",
       errorDetails: err.message
     });
+    
+    // Final cleanup attempt in case of an error not caught above
+    if (await fs.pathExists(TEMP_DIR)) {
+      await fs.remove(TEMP_DIR);
+    }
   }
 };
 
 
-  
 // GET /api/submissions?problemId=...
 export const getSubmissionsByProblem = async (req, res) => {
   const { problemId } = req.query;
@@ -364,8 +360,8 @@ export const getAllSubmissionsForProblem = async (req, res) => {
     if (!problemId) return res.status(400).json({ msg: 'Problem ID is required' });
 
     const submissions = await Submission.find({ problem: problemId })
-      .populate('user', 'name email')   // correct populate
-      .sort({ createdAt: -1 });         // use createdAt if available
+      .populate('user', 'name email')
+      .sort({ createdAt: -1 });
 
     res.json(submissions);
   } catch (err) {
@@ -449,14 +445,14 @@ export const getSubmissionById = async (req, res) => {
   try {
     const submission = await Submission.findById(req.params.id)
       .populate('problem', 'title difficulty')
-      .populate('testResults.testcase', 'input expectedOutput'); // ✅ Add this
+      .populate('testResults.testcase', 'input expectedOutput');
 
     if (!submission) return res.status(404).json({ msg: 'Submission not found' });
 
     if (submission.user.toString() !== req.user.id && req.user.role !== 'admin') {
       return res.status(403).json({ msg: 'Unauthorized' });
     }
-
+    console.log(submission);
     res.json(submission);
   } catch (err) {
     console.error('Get submission error:', err);

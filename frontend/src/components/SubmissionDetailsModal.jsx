@@ -31,7 +31,7 @@ const SubmissionDetailsModal = ({ submissionId, onClose }) => {
       setError(null);
       try {
         // Assuming your backend supports population of the testcase data via the submissions route
-        const response = await axios.get(`/submissions/${submissionId}`);
+        const response = await axios.get(`/submissions/single/${submissionId}`);
         setSubmission(response.data);
       } catch (err) {
         console.error('Error fetching submission details:', err);
@@ -51,11 +51,11 @@ const SubmissionDetailsModal = ({ submissionId, onClose }) => {
   );
   if (error) return <div className="p-8 text-red-500 bg-red-100 rounded-lg shadow-xl">{error}</div>;
   if (!submission) return null;
-//   console.log(submission);
-  const totalTests = submission.length;
-  const passedTests = submission.filter(r => r.verdict === 'Accepted').length;
-  const sampleTests = submission.filter(r => r.testcase?.isSample);
-  const hiddenTests = submission.filter(r => !r.testcase?.isSample);
+  console.log(submission);
+  const totalTests = submission.testResults.length;
+  const passedTests = submission.testResults.filter(r => r.verdict === 'Accepted').length;
+  const sampleTests = submission.testResults.filter(r => r.testcase?.isSample);
+  const hiddenTests = submission.testResults.filter(r => !r.testcase?.isSample);
   const passedHiddenTests = hiddenTests.filter(r => r.verdict === 'Accepted').length;
 
   return (

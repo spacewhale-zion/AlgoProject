@@ -26,7 +26,10 @@ const TestResultSchema = new mongoose.Schema({
     userOutput: {
         type: String,
         default: ''
-    }
+    },
+    isSample: { type: Boolean, default: false }
+
+
 }, { _id: false });
 
 
