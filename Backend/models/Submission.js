@@ -1,12 +1,42 @@
 import mongoose from 'mongoose';
 
+
+
+const TestResultSchema = new mongoose.Schema({
+    testcase: {
+        // We only store the ID here. The detailed input/output will be fetched separately if needed.
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Testcase',
+        required: true
+    },
+    verdict: {
+        type: String,
+        enum: ['Accepted', 'Wrong Answer', 'Time Limit Exceeded', 'Memory Limit Exceeded', 'Runtime Error', 'Internal Error'],
+        required: true
+    },
+    time: { // Time taken in milliseconds
+        type: Number,
+        default: 0
+    },
+    memory: { // Memory used in kilobytes or megabytes
+        type: Number,
+        default: 0
+    },
+    // Storing the user's output for the sample tests helps with debugging in the frontend
+    userOutput: {
+        type: String,
+        default: ''
+    }
+}, { _id: false });
+
+
 const submissionSchema = new mongoose.Schema({
-  userId: {
+  user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
   },
-  problemId: {
+  problem: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Problem',
     required: true
@@ -14,13 +44,16 @@ const submissionSchema = new mongoose.Schema({
   code: { type: String, required: true },
   language: { type: String, required: true },
   verdict: {
-    type: String,
-    enum: ['Pending', 'Accepted', 'Wrong Answer', 'TLE', 'MLE', 'Compilation Error'],
-    default: 'Pending'
+   type: String,
+        enum: ['Pending', 'Accepted', 'Wrong Answer', 'Time Limit Exceeded', 'Memory Limit Exceeded', 'Runtime Error', 'Compilation Error', 'Internal Error'],
+        default: 'Pending'
   },
-  executionTime: { type: Number },  // in ms
-  memoryUsed: { type: Number },     // in KB
-  submittedAt: { type: Date, default: Date.now }
-});
+  testResults: [TestResultSchema],
+    // Optional field for compilation or detailed runtime messages
+    errorDetails: {
+        type: String,
+        default: ''
+    }
+},{ timestamps: true });
 
 export default mongoose.model('Submission', submissionSchema);

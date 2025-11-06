@@ -1,9 +1,8 @@
 import dotenv from 'dotenv';
 dotenv.config();
 import express from 'express';
-import mongoose from 'mongoose';
 import cors from 'cors';
-
+import {connectDB} from './config/db.js' 
 
 const app = express();
 
@@ -11,9 +10,6 @@ app.use(cors());
 app.use(express.json());
 console.log('Testing ENV:', process.env.PORT);
 
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('MongoDB connected'))
-  .catch((err) => console.error(err));
 
 // Routes
 import authRoutes from './routes/auth.js';
@@ -22,6 +18,8 @@ import problemRoutes from './routes/problems.js';
 import submissionRoutes from './routes/submissions.js';
 import testcaseRoutes from './routes/testcases.js';
 import geminiRoutes from './routes/gemini.js';
+
+connectDB();
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);

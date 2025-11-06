@@ -53,8 +53,8 @@ export const createSubmission = async (req, res) => {
   
       const submission = new Submission({
         _id: new mongoose.Types.ObjectId(),
-        userId: req.user.id,
-        problemId,
+        user: req.user.id,
+        problem:problemId,
         code,
         language,
         verdict: 'Pending',
@@ -174,7 +174,7 @@ export const createSubmission = async (req, res) => {
 
 
   export const runCode = async (req, res) => {
-    const { code = '', language = 'cpp', input = '' } = req.body;
+    const { code = '', language = 'cpp', input = '2 5' } = req.body;
   
     try {
       const config = languageConfigs[language.toLowerCase()];
@@ -232,19 +232,126 @@ export const createSubmission = async (req, res) => {
     }
   };
   
+
+  const getVerdictFromExitCode = (code, stderr) => {
+    // Windows Exit Codes are less standardized for signals than Linux.
+    // We primarily rely on exit code and stderr content for diagnosis.
+    
+    if (code === null || code === undefined) {
+        // This might happen if the process was killed externally (e.g., by a Node.js signal or manual intervention)
+        return 'Internal Error (Process Interrupted)'; 
+    }
+    
+    if (code !== 0) {
+        // Specific checks based on common Windows/runtime errors
+        if (stderr.includes("Segmentation fault") || stderr.includes("Access violation")) {
+            return 'Runtime Error (Segmentation Fault)'; // Indicates illegal memory access
+        }
+        if (stderr.includes("divide by zero")) {
+            return 'Runtime Error (Floating Point Exception)';
+        }
+        
+        // General non-zero exit usually means an unhandled exception or non-standard exit.
+        return `Runtime Error (Exit Code ${code})`; 
+    }
+    
+    // If code is 0 but execution failed due to Node.js timeout, another function handles it.
+    return 'Internal Error'; 
+};
+
+
+export const judgeSubmission = async (submissionId) => {
+  try {
+    const submission = await Submission.findById(submissionId)
+      .populate("problem");
+    if (!submission) return;
+
+    const problem = submission.problem;
+    const TIME_LIMIT = problem.timeLimit || 2000; // ms
+    const testcases = await Testcase.find({ problem: problem._id });
+
+    const TEMP_DIR = path.join(process.cwd(), "temp", `submission-${submissionId}`);
+    await fs.ensureDir(TEMP_DIR);
+
+    // Build paths
+    const EXEC = path.join(TEMP_DIR, isWindows ? "Main.exe" : "Main.out");
+    const SRC = path.join(TEMP_DIR, `Main.${languageConfigs[submission.language].extension}`);
+
+    // If code was not compiled (e.g., compile error previously)
+    if (!fs.existsSync(EXEC) && submission.language === "cpp") {
+      await Submission.findByIdAndUpdate(submissionId, { verdict: "Compilation Error" });
+      return;
+    }
+
+    const testResults = [];
+    let overallVerdict = "Accepted";
+
+    for (const tc of testcases) {
+      const start = Date.now();
+      let output = "";
+      let errorOutput = "";
+      let timedOut = false;
+
+      try {
+        const command = languageConfigs[submission.language].execute(EXEC || SRC, null);
+        const { stdout } = await execAsync(command, {
+          input: tc.input,
+          timeout: TIME_LIMIT
+        });
+        output = stdout.trim();
+      } catch (err) {
+        if (err.killed || err.signal === "SIGTERM") {
+          overallVerdict = "TLE";
+          testResults.push({ testcase: tc._id, verdict: "TLE" });
+          break;
+        }
+        errorOutput = err.stderr?.trim() || err.message;
+        overallVerdict = "Runtime Error";
+        testResults.push({ testcase: tc._id, verdict: "Runtime Error", userOutput: errorOutput });
+        break;
+      }
+
+      const expected = tc.expectedOutput.trim();
+      if (output !== expected) {
+        overallVerdict = "Wrong Answer";
+        testResults.push({ testcase: tc._id, verdict: "Wrong Answer", userOutput: output, expectedOutput: expected });
+        break;
+      }
+
+      testResults.push({ testcase: tc._id, verdict: "Accepted" });
+    }
+
+    await Submission.findByIdAndUpdate(submissionId, {
+      verdict: overallVerdict,
+      testResults
+    });
+
+    await fs.remove(TEMP_DIR);
+
+  } catch (err) {
+    console.error("Judge Error:", err);
+    await Submission.findByIdAndUpdate(submissionId, {
+      verdict: "Internal Error",
+      errorDetails: err.message
+    });
+  }
+};
+
+
   
 // GET /api/submissions?problemId=...
 export const getSubmissionsByProblem = async (req, res) => {
   const { problemId } = req.query;
 
   try {
-    const query = { userId: req.user.id };
-    if (problemId) query.problemId = problemId;
+    const query = { user: req.user.id };
+    if (problemId) query.problem = problemId;
 
-    const submissions = await Submission.find(query).sort({ submittedAt: -1 })
-    .populate('problemId', 'title difficulty');
+    const submissions = await Submission.find(query)
+      .sort({ createdAt: -1 })
+      .populate('problem', 'title difficulty');
+
     res.json(submissions);
-
   } catch (err) {
     console.error('Get submissions error:', err);
     res.status(500).json({ msg: 'Server error' });
@@ -256,9 +363,9 @@ export const getAllSubmissionsForProblem = async (req, res) => {
     const problemId = req.params.id;
     if (!problemId) return res.status(400).json({ msg: 'Problem ID is required' });
 
-    const submissions = await Submission.find({ problemId })
-      .populate('userId', 'name email') // include user's name and email
-      .sort({ submittedAt: -1 });
+    const submissions = await Submission.find({ problem: problemId })
+      .populate('user', 'name email')   // correct populate
+      .sort({ createdAt: -1 });         // use createdAt if available
 
     res.json(submissions);
   } catch (err) {
@@ -274,51 +381,46 @@ export const getGlobalLeaderboard = async (req, res) => {
 
     // Match only accepted submissions from this month
     const submissions = await Submission.aggregate([
-      {
-        $match: {
-          verdict: 'Accepted',
-          submittedAt: { $gte: firstDayOfMonth }
+  {
+    $match: {
+      verdict: 'Accepted',
+      createdAt: { $gte: firstDayOfMonth }
+    }
+  },
+  {
+    $lookup: {
+      from: 'problems',
+      localField: 'problem',
+      foreignField: '_id',
+      as: 'problem'
+    }
+  },
+  { $unwind: '$problem' },
+  {
+    $addFields: {
+      difficultyPoints: {
+        $switch: {
+          branches: [
+            { case: { $eq: ['$problem.difficulty', 'Easy'] }, then: 1 },
+            { case: { $eq: ['$problem.difficulty', 'Medium'] }, then: 3 },
+            { case: { $eq: ['$problem.difficulty', 'Normal'] }, then: 3 },
+            { case: { $eq: ['$problem.difficulty', 'Hard'] }, then: 10 }
+          ],
+          default: 0
         }
-      },
-      {
-        $lookup: {
-          from: 'problems',
-          localField: 'problemId',
-          foreignField: '_id',
-          as: 'problem'
-        }
-      },
-      { $unwind: '$problem' },
-      {
-        $addFields: {
-          difficultyPoints: {
-            $switch: {
-              branches: [
-                { case: { $eq: ['$problem.difficulty', 'Easy'] }, then: 1 },
-                { case: { $eq: ['$problem.difficulty', 'Medium'] }, then: 3 },
-                { case: { $eq: ['$problem.difficulty', 'Normal'] }, then: 3 },
-                { case: { $eq: ['$problem.difficulty', 'Hard'] }, then: 10 }
-              ],
-              default: 0
-            }
-          }
-        }
-      },
-      {
-        $group: {
-          _id: '$userId',
-          totalPoints: { $sum: '$difficultyPoints' },
-          latestSubmission: { $max: '$submittedAt' }
-        }
-      },
-      {
-        $sort: {
-          totalPoints: -1,
-          latestSubmission: 1
-        }
-      },
-      { $limit: 100 }
-    ]);
+      }
+    }
+  },
+  {
+    $group: {
+      _id: '$user',
+      totalPoints: { $sum: '$difficultyPoints' },
+      latestSubmission: { $max: '$createdAt' }
+    }
+  },
+  { $sort: { totalPoints: -1, latestSubmission: 1 } },
+  { $limit: 100 }
+]);
 
     // Fetch user data
     const users = await User.find({ _id: { $in: submissions.map(u => u._id) } })
@@ -346,11 +448,12 @@ export const getGlobalLeaderboard = async (req, res) => {
 export const getSubmissionById = async (req, res) => {
   try {
     const submission = await Submission.findById(req.params.id)
-    .populate('problemId', 'title difficulty');
+      .populate('problem', 'title difficulty')
+      .populate('testResults.testcase', 'input expectedOutput'); // ✅ Add this
+
     if (!submission) return res.status(404).json({ msg: 'Submission not found' });
 
-    // Only allow access if user is owner or admin
-    if (submission.userId.toString() !== req.user.id && req.user.role !== 'admin') {
+    if (submission.user.toString() !== req.user.id && req.user.role !== 'admin') {
       return res.status(403).json({ msg: 'Unauthorized' });
     }
 
@@ -360,6 +463,8 @@ export const getSubmissionById = async (req, res) => {
     res.status(500).json({ msg: 'Server error' });
   }
 };
+
+
 
 // PUT /api/submissions/:id/verdict (used by judge/worker)
 export const updateVerdict = async (req, res) => {
@@ -387,9 +492,9 @@ export const getActivityHeatmap = async (req, res) => {
   try {
     const stats = await Submission.aggregate([
       {
-        $match: {
-          userId: new mongoose.Types.ObjectId(req.user.id)
-        }
+      
+          $match: { user: new mongoose.Types.ObjectId(req.user.id) }
+       
       },
       {
         $group: {

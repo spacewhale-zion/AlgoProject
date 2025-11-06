@@ -16,7 +16,15 @@ const problemSchema = new mongoose.Schema({
   },
   tags: [{ type: String }],
   createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  updatedAt: { type: Date, default: Date.now },
+     timeLimit: {
+        type: Number, // in seconds
+        default: 2
+    },
+    memoryLimit: {
+        type: Number, // in MB
+        default: 256
+    }
 });
 
 export default mongoose.model('Problem', problemSchema);
